@@ -52,4 +52,6 @@ async def stream_repurposed_content(source_text: str, platforms: list[str], tone
         async for chunk in response:
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
+    except Exception as e:
+        raise Exception(f"AI Streaming Generation Failed: {str(e)}")
 
