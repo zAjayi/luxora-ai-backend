@@ -8,11 +8,7 @@ app = FastAPI(title="LuxoraAI API", version="1.0.0")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "https://luxora-ai-frontend.vercel.app"
-    ],
+    allow_origins=["*"], # Reverted to wildcard to fix SSE streaming CORS constraint
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
