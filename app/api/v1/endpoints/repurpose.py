@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sse_starlette.sse import EventSourceResponse
 from app.schemas.repurpose import RepurposeRequest
 from app.ai.inference_client import stream_repurposed_content
-from app.db.session import get_db
+from app.db.session import get_db, AsyncSessionLocal
 from app.models.repurpose_job import RepurposeJob
 from app.models.repurposed_output import RepurposedOutput
 from app.models.brand_voice import BrandVoice
@@ -149,23 +149,29 @@ async def repurpose_content_stream(request: Request, payload: RepurposeRequest, 
                 
                 outputs_data = json.loads(cleaned_response)
                 
-                # Save outputs
-                for platform, variants in outputs_data.items():
-                    if isinstance(variants, list):
-                        for index, content in enumerate(variants):
-                            output = RepurposedOutput(
-                                job_id=job.id,
-                                platform=platform,
-                                variant_index=index + 1,
-                                content=content
-                            )
-                            db.add(output)
-                
-                job.status = "completed"
-                await db.commit()
+                async with AsyncSessionLocal() as bg_db:
+                    # Save outputs
+                    for platform, variants in outputs_data.items():
+                        if isinstance(variants, list):
+                            for index, content in enumerate(variants):
+                                output = RepurposedOutput(
+                                    job_id=job.id,
+                                    platform=platform,
+                                    variant_index=index + 1,
+                                    content=content
+                                )
+                                bg_db.add(output)
+                    
+                    bg_job = await bg_db.get(RepurposeJob, job.id)
+                    if bg_job:
+                        bg_job.status = "completed"
+                        await bg_db.commit()
             except Exception as ex:
-                job.status = "failed"
-                await db.commit()
+                async with AsyncSessionLocal() as bg_db:
+                    bg_job = await bg_db.get(RepurposeJob, job.id)
+                    if bg_job:
+                        bg_job.status = "failed"
+                        await bg_db.commit()
             
             # Send a completion event when done
             yield {
@@ -173,8 +179,11 @@ async def repurpose_content_stream(request: Request, payload: RepurposeRequest, 
                 "data": "[DONE]"
             }
         except Exception as e:
-            job.status = "failed"
-            await db.commit()
+            async with AsyncSessionLocal() as bg_db:
+                bg_job = await bg_db.get(RepurposeJob, job.id)
+                if bg_job:
+                    bg_job.status = "failed"
+                    await bg_db.commit()
             yield {
                 "event": "error",
                 "data": str(e)
