@@ -30,7 +30,23 @@ target_metadata = Base.metadata
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
 
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://"))
+import urllib.parse
+db_url = settings.DATABASE_URL
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+parsed = urllib.parse.urlparse(db_url)
+query_params = urllib.parse.parse_qsl(parsed.query)
+new_query_params = []
+for k, v in query_params:
+    if k == "sslmode":
+        new_query_params.append(("ssl", v))
+    elif k in ("channel_binding", "options", "application_name"):
+        continue
+    else:
+        new_query_params.append((k, v))
+parsed = parsed._replace(query=urllib.parse.urlencode(new_query_params))
+config.set_main_option("sqlalchemy.url", urllib.parse.urlunparse(parsed))
 
 
 
