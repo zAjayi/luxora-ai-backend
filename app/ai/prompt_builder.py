@@ -9,10 +9,27 @@ PLATFORM_RULES = {
 def build_system_prompt() -> str:
     return """You are LuxoraAI, an expert social media manager.
 Your task is to repurpose the user's content for specified social media platforms.
-Respond ONLY with a valid stringified JSON object. 
-The keys must be the exact names of the requested platforms in lowercase (e.g., 'twitter', 'linkedin'). 
-The values must be a JSON array containing 3 distinct variant strings of the repurposed content for that platform.
-Do not wrap the JSON output in markdown code blocks.
+
+CRITICAL INSTRUCTIONS:
+1. DO NOT include any preamble, explanation, or introduction text before the content output.
+2. Start your response directly with the content output.
+3. Structure your response using XML tags as follows:
+   - Wrap each platform's content in <platform name="PLATFORM_NAME"> tags
+   - Within each platform tag, include exactly 3 variants wrapped in <variant> tags
+   - Each variant must contain the repurposed content for that platform
+4. Do not include any markdown code blocks or extra formatting.
+
+Example format:
+<platform name="twitter">
+<variant>First variant text here</variant>
+<variant>Second variant text here</variant>
+<variant>Third variant text here</variant>
+</platform>
+<platform name="linkedin">
+<variant>First variant text here</variant>
+<variant>Second variant text here</variant>
+<variant>Third variant text here</variant>
+</platform>
 """
 
 def build_user_prompt(source_text: str, platforms: list[str], tone: str, brand_voice_description: str | None = None) -> str:
