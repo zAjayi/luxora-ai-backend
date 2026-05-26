@@ -6,7 +6,7 @@ from typing import List
 
 from app.db.session import get_db
 from app.models.brand_voice import BrandVoice
-from app.schemas.brand_voice import BrandVoiceCreate, BrandVoiceResponse
+from app.schemas.brand_voice import BrandVoiceCreate, BrandVoiceUpdate, BrandVoiceResponse
 
 router = APIRouter()
 
@@ -30,3 +30,30 @@ async def get_brand_voice(id: UUID, db: AsyncSession = Depends(get_db)):
     if not brand_voice:
         raise HTTPException(status_code=404, detail="Brand voice not found")
     return brand_voice
+
+@router.put("/{id}", response_model=BrandVoiceResponse)
+async def update_brand_voice(id: UUID, brand_voice: BrandVoiceUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(BrandVoice).where(BrandVoice.id == id))
+    db_brand_voice = result.scalars().first()
+    if not db_brand_voice:
+        raise HTTPException(status_code=404, detail="Brand voice not found")
+    
+    update_data = brand_voice.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_brand_voice, field, value)
+    
+    db.add(db_brand_voice)
+    await db.commit()
+    await db.refresh(db_brand_voice)
+    return db_brand_voice
+
+@router.delete("/{id}")
+async def delete_brand_voice(id: UUID, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(BrandVoice).where(BrandVoice.id == id))
+    db_brand_voice = result.scalars().first()
+    if not db_brand_voice:
+        raise HTTPException(status_code=404, detail="Brand voice not found")
+    
+    await db.delete(db_brand_voice)
+    await db.commit()
+    return {"message": "Brand voice deleted successfully"}
