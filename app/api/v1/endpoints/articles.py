@@ -17,7 +17,7 @@ from app.schemas.article import (
 )
 from app.core.config import settings
 from openai import AsyncOpenAI
-from app.ai.streaming_parser import XMLStreamingParser, ChunkAccumulator
+from app.ai.streaming_parser import ArticleStreamingParser, ChunkAccumulator
 from app.ai.prompt_builder import build_article_system_prompt, build_article_user_prompt
 import json
 
@@ -105,7 +105,7 @@ async def generate_article_stream(request: Request, payload: ArticleRequest, db:
 
     async def event_generator():
         full_response = ""
-        xml_parser = XMLStreamingParser()
+        article_parser = ArticleStreamingParser()
         chunk_accumulator = ChunkAccumulator(min_chunk_size=50)
         
         try:
@@ -145,7 +145,7 @@ async def generate_article_stream(request: Request, payload: ArticleRequest, db:
                     # Accumulate chunks
                     accumulated = chunk_accumulator.add(delta)
                     if accumulated:
-                        parsed_events = xml_parser.consume(accumulated)
+                        parsed_events = article_parser.consume(accumulated)
                         for ev in parsed_events:
                             yield {
                                 "event": "message",
@@ -155,7 +155,7 @@ async def generate_article_stream(request: Request, payload: ArticleRequest, db:
             # Flush remaining chunks
             remaining = chunk_accumulator.flush()
             if remaining:
-                parsed_events = xml_parser.consume(remaining)
+                parsed_events = article_parser.consume(remaining)
                 for ev in parsed_events:
                     yield {
                         "event": "message",

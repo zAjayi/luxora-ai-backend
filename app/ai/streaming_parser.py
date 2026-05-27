@@ -127,6 +127,79 @@ class XMLStreamingParser:
         return []
 
 
+class ArticleStreamingParser:
+    """
+    Parses article-specific XML tags <article>...</article>.
+    Emits text progressively as it arrives for real-time streaming.
+    """
+    
+    def __init__(self):
+        self.buffer = ""
+        self.in_article = False
+        self.article_started = False
+        self.content_started = False
+    
+    def consume(self, chunk: str) -> list[dict]:
+        """
+        Process incoming chunk and emit text progressively.
+        Returns list of events with text content.
+        """
+        self.buffer += chunk
+        events = []
+        
+        # Skip preamble before <article
+        if not self.content_started:
+            if '<article>' in self.buffer:
+                # Remove everything before <article>
+                idx = self.buffer.find('<article>')
+                if idx > 0:
+                    self.buffer = self.buffer[idx:]
+                self.content_started = True
+                self.in_article = True
+                self.buffer = self.buffer[9:]  # Remove the <article> tag itself
+        
+        if not self.content_started:
+            return []
+        
+        # Look for closing tag
+        if self.in_article:
+            closing_idx = self.buffer.find('</article>')
+            if closing_idx != -1:
+                # Extract content up to closing tag
+                content = self.buffer[:closing_idx].strip()
+                if content:
+                    events.append({
+                        "type": "article",
+                        "text": content
+                    })
+                self.in_article = False
+                self.buffer = self.buffer[closing_idx + 10:]  # Remove </article> tag
+            else:
+                # Emit content progressively
+                content = self.buffer.strip()
+                if content:
+                    events.append({
+                        "type": "article",
+                        "text": content
+                    })
+                    self.buffer = ""
+        
+        return events
+    
+    def flush(self) -> list[dict]:
+        """
+        Flush any remaining buffered content when stream ends.
+        """
+        events = []
+        if self.buffer.strip():
+            events.append({
+                "type": "article",
+                "text": self.buffer.strip()
+            })
+        self.buffer = ""
+        return events
+
+
 class ChunkAccumulator:
     """
     Accumulates chunks before passing to parser.
