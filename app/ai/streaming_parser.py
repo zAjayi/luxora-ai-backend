@@ -131,23 +131,41 @@ class ArticleStreamingParser:
     """
     Parses article-specific XML tags <article>...</article>.
     Emits text progressively as it arrives for real-time streaming.
-    Strips XML wrapper tags cleanly.
+    Strips XML wrapper tags and any markdown/HTML formatting.
     """
     
     def __init__(self):
         self.buffer = ""
         self.in_article = False
         self.content_started = False
-        self.tag_regex = re.compile(r'</?article>')
+        self.article_tag_regex = re.compile(r'</?article>')
+        self.markdown_regex = re.compile(r'[*_`#\[\]()]+')
     
     def _strip_tags(self, text: str) -> str:
-        """Remove article tags from text."""
-        return self.tag_regex.sub('', text).strip()
+        """Remove article XML tags from text."""
+        return self.article_tag_regex.sub('', text).strip()
+    
+    def _strip_markdown(self, text: str) -> str:
+        """Remove common markdown formatting characters while preserving readability."""
+        # Remove markdown heading symbols at line start
+        text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+        # Remove bold/italic markers (**text**, *text*, __text__, _text_)
+        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+        text = re.sub(r'__(.+?)__', r'\1', text)
+        text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'\1', text)
+        text = re.sub(r'(?<!_)_(?!_)(.+?)(?<!_)_(?!_)', r'\1', text)
+        # Remove code backticks
+        text = re.sub(r'`([^`]+)`', r'\1', text)
+        # Remove markdown links [text](url)
+        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+        # Remove markdown lists - and *, keep content
+        text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)
+        return text.strip()
     
     def consume(self, chunk: str) -> list[dict]:
         """
         Process incoming chunk and emit text progressively.
-        Returns list of events with text content (tags removed).
+        Returns list of events with text content (tags and formatting removed).
         """
         self.buffer += chunk
         events = []
@@ -172,8 +190,8 @@ class ArticleStreamingParser:
                 # Found closing tag - extract complete content
                 content = self.buffer[:closing_idx].strip()
                 if content:
-                    # Clean up any stray tags
                     content = self._strip_tags(content)
+                    content = self._strip_markdown(content)
                     if content:
                         events.append({
                             "type": "article",
@@ -185,8 +203,8 @@ class ArticleStreamingParser:
                 # Haven't found closing tag yet - emit accumulated content
                 content = self.buffer.strip()
                 if content:
-                    # Clean up tags and emit progressively
                     content = self._strip_tags(content)
+                    content = self._strip_markdown(content)
                     if content:
                         events.append({
                             "type": "article",
@@ -203,6 +221,7 @@ class ArticleStreamingParser:
         events = []
         if self.buffer.strip():
             content = self._strip_tags(self.buffer)
+            content = self._strip_markdown(content)
             if content:
                 events.append({
                     "type": "article",

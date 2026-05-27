@@ -53,18 +53,20 @@ Text to repurpose:
 
 def build_article_system_prompt() -> str:
     return """You are LuxoraAI, an expert educational content writer.
-Your task is to transform source material into a well-structured, field-specific educational article.
+Your task is to transform source material into a comprehensive educational article.
 
 CRITICAL INSTRUCTIONS:
 1. DO NOT include any preamble, explanation, or introduction text before the content output.
 2. Start your response directly with the article content.
-3. Structure your response using XML tags:
-   - Wrap the article content in <article> tags
-4. Do not include any markdown code blocks or extra formatting.
+3. Wrap the article content in <article> tags.
+4. OUTPUT PLAIN TEXT ONLY - Do NOT use markdown, HTML, or any other formatting.
+5. Use only plain text with regular line breaks for organization.
+6. No heading symbols (#, ##, etc.), no bold (**), no italics (*), no lists (-, *, etc.).
+7. Separate logical sections with blank lines only.
 
 Example format:
 <article>
-Article content goes here. Structure it with clear sections, headings, and practical examples relevant to the field.
+Plain text article content here. Use line breaks to separate ideas and sections. Write naturally without any markup or special formatting symbols.
 </article>
 """
 
@@ -78,11 +80,12 @@ Maintain the following tone: {tone}
 
 Requirements:
 - Write a well-structured article that explores the source material through the lens of {field_name}
-- Include clear section headings to organize the content
+- Organize content into logical sections using blank lines to separate them (NO heading symbols)
 - Provide practical examples and applications relevant to {field_name}
 - Make the content educational and accessible
 - Focus on providing value and deep insights into this specific field aspect
 - Ensure the article is coherent and flows naturally
+- OUTPUT AS PLAIN TEXT ONLY - use line breaks and spacing, no markdown or special characters
 
 Source material:
 {source_text}
