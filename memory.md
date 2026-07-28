@@ -20,6 +20,7 @@
   - Base and Streaming completions integrated via `inference_client.py` using `openai.AsyncOpenAI` mapped to OpenRouter.
 - **API Endpoints (`app/api/v1`):**
   - `repurpose.py` created with robust Server-Sent Events (SSE) streaming capabilities via `@router.post("/stream")` which consumes chunks from the LLM, parses JSON dynamically, and saves job data concurrently.
+  - Repurpose jobs now persist a single output per request, with the backend prompting for one primary platform and one variant.
   - Setup of other endpoints (`brand_voices.py`, `jobs.py`, `outputs.py`).
 
 ### 🔄 In-Progress / Next Steps

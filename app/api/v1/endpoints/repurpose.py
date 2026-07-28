@@ -4,7 +4,6 @@ from sqlalchemy import select
 from sse_starlette.sse import EventSourceResponse
 from app.schemas.repurpose import RepurposeRequest
 from app.ai.inference_client import stream_repurposed_content
-from app.ai.streaming_parser import XMLStreamingParser, ChunkAccumulator, parse_xml_response_to_json
 from app.db.session import get_db, AsyncSessionLocal
 from app.models.repurpose_job import RepurposeJob
 from app.models.repurposed_output import RepurposedOutput
@@ -12,6 +11,78 @@ from app.models.brand_voice import BrandVoice
 import json
 
 router = APIRouter()
+
+
+class SingleOutputStreamExtractor:
+    def __init__(self) -> None:
+        self.buffer = ""
+        self.platform_name = "linkedin"
+        self.in_variant = False
+        self.tail_guard = len('</variant>') - 1
+
+    def consume(self, chunk: str) -> list[dict]:
+        self.buffer += chunk
+        events: list[dict] = []
+
+        while True:
+            if not self.in_variant:
+                platform_start = self.buffer.find('<platform name="')
+                if platform_start == -1:
+                    return events
+
+                platform_name_start = platform_start + len('<platform name="')
+                platform_name_end = self.buffer.find('">', platform_name_start)
+                if platform_name_end == -1:
+                    return events
+
+                self.platform_name = self.buffer[platform_name_start:platform_name_end]
+
+                variant_start = self.buffer.find('<variant>', platform_name_end)
+                if variant_start == -1:
+                    return events
+
+                self.buffer = self.buffer[variant_start + len('<variant>'):]
+                self.in_variant = True
+                continue
+
+            variant_end = self.buffer.find('</variant>')
+            if variant_end == -1:
+                if len(self.buffer) <= self.tail_guard:
+                    return events
+
+                text = self.buffer[:-self.tail_guard]
+                self.buffer = self.buffer[-self.tail_guard:]
+                if text:
+                    events.append({
+                        "platform": self.platform_name,
+                        "variant_index": 0,
+                        "text": text,
+                    })
+                return events
+
+            text = self.buffer[:variant_end]
+            if text:
+                events.append({
+                    "platform": self.platform_name,
+                    "variant_index": 0,
+                    "text": text,
+                })
+
+            self.buffer = self.buffer[variant_end + len('</variant>'):]
+            self.in_variant = False
+            return events
+
+    def flush(self) -> list[dict]:
+        events: list[dict] = []
+        if self.in_variant and self.buffer.strip():
+            events.append({
+                "platform": self.platform_name,
+                "variant_index": 0,
+                "text": self.buffer,
+            })
+        self.buffer = ""
+        self.in_variant = False
+        return events
 
 @router.post("/stream")
 async def repurpose_content_stream(request: Request, payload: RepurposeRequest, db: AsyncSession = Depends(get_db)):
@@ -39,9 +110,8 @@ async def repurpose_content_stream(request: Request, payload: RepurposeRequest, 
     await db.refresh(job)
 
     async def event_generator():
-        full_response = ""
-        xml_parser = XMLStreamingParser()
-        chunk_accumulator = ChunkAccumulator(min_chunk_size=50)
+        streamed_text = ""
+        extractor = SingleOutputStreamExtractor()
         
         try:
             # First send the job_id
@@ -62,45 +132,32 @@ async def repurpose_content_stream(request: Request, payload: RepurposeRequest, 
                 if await request.is_disconnected():
                     break
                 
-                full_response += chunk
-                
-                # Accumulate chunks to reduce parsing overhead
-                accumulated = chunk_accumulator.add(chunk)
-                if accumulated:
-                    # Parse accumulated chunks
-                    parsed_events = xml_parser.consume(accumulated)
-                    for ev in parsed_events:
-                        yield {
-                            "event": "message",
-                            "data": json.dumps(ev)
-                        }
-            
-            # Flush any remaining accumulated chunks
-            remaining = chunk_accumulator.flush()
-            if remaining:
-                parsed_events = xml_parser.consume(remaining)
+                parsed_events = extractor.consume(chunk)
                 for ev in parsed_events:
+                    streamed_text += ev["text"]
                     yield {
                         "event": "message",
                         "data": json.dumps(ev)
                     }
-            
-            # Parse final response to create outputs
+
+            remaining_events = extractor.flush()
+            for ev in remaining_events:
+                streamed_text += ev["text"]
+                yield {
+                    "event": "message",
+                    "data": json.dumps(ev)
+                }
+
+            # Persist the single streamed result
             try:
-                outputs_data = parse_xml_response_to_json(full_response)
-                
                 async with AsyncSessionLocal() as bg_db:
-                    # Save outputs
-                    for platform, variants in outputs_data.items():
-                        if isinstance(variants, list):
-                            for index, content in enumerate(variants):
-                                output = RepurposedOutput(
-                                    job_id=job.id,
-                                    platform=platform,
-                                    variant_index=index + 1,
-                                    content=content
-                                )
-                                bg_db.add(output)
+                    output = RepurposedOutput(
+                        job_id=job.id,
+                        platform=extractor.platform_name,
+                        variant_index=1,
+                        content=streamed_text.strip()
+                    )
+                    bg_db.add(output)
                     
                     bg_job = await bg_db.get(RepurposeJob, job.id)
                     if bg_job:

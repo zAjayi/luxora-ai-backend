@@ -14,41 +14,32 @@ CRITICAL INSTRUCTIONS:
 1. DO NOT include any preamble, explanation, or introduction text before the content output.
 2. Start your response directly with the content output.
 3. Structure your response using XML tags as follows:
-   - Wrap each platform's content in <platform name="PLATFORM_NAME"> tags
-   - Within each platform tag, include exactly 3 variants wrapped in <variant> tags
-   - Each variant must contain the repurposed content for that platform
+   - Wrap the single output in one <platform name="PLATFORM_NAME"> tag
+   - Include exactly 1 variant wrapped in a <variant> tag
+   - Only use the first requested platform
 4. Do not include any markdown code blocks or extra formatting.
 
 Example format:
 <platform name="twitter">
-<variant>First variant text here</variant>
-<variant>Second variant text here</variant>
-<variant>Third variant text here</variant>
-</platform>
-<platform name="linkedin">
-<variant>First variant text here</variant>
-<variant>Second variant text here</variant>
-<variant>Third variant text here</variant>
+<variant>Single result text here</variant>
 </platform>
 """
 
 def build_user_prompt(source: str, platforms: list[str], tone: str, brand_voice_description: str | None = None, instruction: str | None = None) -> str:
     effective_platforms = platforms or ["linkedin"]
-    platform_list = ", ".join(effective_platforms)
+    primary_platform = effective_platforms[0]
     
-    platform_rules_str = ""
-    for p in effective_platforms:
-        rule = PLATFORM_RULES.get(p.lower(), "Follow general best practices for this platform.")
-        platform_rules_str += f"- {p}: {rule}\n"
+    rule = PLATFORM_RULES.get(primary_platform.lower(), "Follow general best practices for this platform.")
 
     brand_voice_instruction = f"\nBrand Voice Context / Description:\n{brand_voice_description}\nEnsure the output heavily aligns with this brand identity." if brand_voice_description else ""
     instruction_context = f"\nRepurpose Instruction:\n{instruction}\nFollow this instruction closely and prioritize it over generic repurposing defaults." if instruction else ""
 
-    return f"""Repurpose the following text for these platforms: {platform_list}.
-Maintain the following core tone/voice: {tone}. Crucially, adapt this core voice to seamlessly fit the unique style, audience expectations, and formatting norms of each specific platform.{brand_voice_instruction}{instruction_context}
+    return f"""Repurpose the following text for the single primary platform: {primary_platform}.
+Maintain the following core tone/voice: {tone}. Adapt this core voice to seamlessly fit the unique style, audience expectations, and formatting norms of this platform.{brand_voice_instruction}{instruction_context}
 
 Platform Specific Rules:
-{platform_rules_str}
+ - {primary_platform}: {rule}
+
 Text to repurpose:
 {source}
 """
