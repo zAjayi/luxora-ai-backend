@@ -32,7 +32,7 @@ async def regenerate_output(id: UUID, db: AsyncSession = Depends(get_db)):
     # Since generate_repurposed_content currently takes a list of platforms, we pass just this platform
     # It returns a dict like { "twitter": ["..."] }
     new_data = await generate_repurposed_content(
-        source_text=job.source_text,
+        source=job.source_text or "",
         platforms=[output.platform],
         tone=job.tone,
         brand_voice_description=None # Could fetch from brand voice table later if needed

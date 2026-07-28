@@ -32,23 +32,25 @@ Example format:
 </platform>
 """
 
-def build_user_prompt(source_text: str, platforms: list[str], tone: str, brand_voice_description: str | None = None) -> str:
-    platform_list = ", ".join(platforms)
+def build_user_prompt(source: str, platforms: list[str], tone: str, brand_voice_description: str | None = None, instruction: str | None = None) -> str:
+    effective_platforms = platforms or ["linkedin"]
+    platform_list = ", ".join(effective_platforms)
     
     platform_rules_str = ""
-    for p in platforms:
+    for p in effective_platforms:
         rule = PLATFORM_RULES.get(p.lower(), "Follow general best practices for this platform.")
         platform_rules_str += f"- {p}: {rule}\n"
 
     brand_voice_instruction = f"\nBrand Voice Context / Description:\n{brand_voice_description}\nEnsure the output heavily aligns with this brand identity." if brand_voice_description else ""
+    instruction_context = f"\nRepurpose Instruction:\n{instruction}\nFollow this instruction closely and prioritize it over generic repurposing defaults." if instruction else ""
 
     return f"""Repurpose the following text for these platforms: {platform_list}.
-Maintain the following core tone/voice: {tone}. Crucially, adapt this core voice to seamlessly fit the unique style, audience expectations, and formatting norms of each specific platform.{brand_voice_instruction}
+Maintain the following core tone/voice: {tone}. Crucially, adapt this core voice to seamlessly fit the unique style, audience expectations, and formatting norms of each specific platform.{brand_voice_instruction}{instruction_context}
 
 Platform Specific Rules:
 {platform_rules_str}
 Text to repurpose:
-{source_text}
+{source}
 """
 
 def build_article_system_prompt() -> str:

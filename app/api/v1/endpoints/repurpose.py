@@ -27,7 +27,8 @@ async def repurpose_content_stream(request: Request, payload: RepurposeRequest, 
             brand_voice_desc = brand_voice.style_guide_text
     # Create the job initially
     job = RepurposeJob(
-        source_text=payload.source_text,
+        source_text=payload.source,
+        source_url=payload.source_url,
         platforms=payload.platforms,
         tone=payload.tone,
         source_type="text",
@@ -51,10 +52,11 @@ async def repurpose_content_stream(request: Request, payload: RepurposeRequest, 
             
             # Yield chunks as they arrive from the AI model
             async for chunk in stream_repurposed_content(
-                source_text=payload.source_text,
+                source=payload.source,
                 platforms=payload.platforms,
                 tone=payload.tone,
-                brand_voice_description=brand_voice_desc
+                brand_voice_description=brand_voice_desc,
+                instruction=payload.instruction
             ):
                 # If client disconnects, stop streaming
                 if await request.is_disconnected():

@@ -1,14 +1,21 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional, Dict
 from datetime import datetime
 from uuid import UUID
 
 class RepurposeRequest(BaseModel):
-    source_text: str
-    platforms: List[str]
+    model_config = ConfigDict(populate_by_name=True)
+
+    source: str = Field(alias="source_text")
+    source_url: Optional[str] = None
+    instruction: Optional[str] = None
+    platforms: List[str] = Field(default_factory=lambda: ["linkedin"])
     tone: Optional[str] = "Professional"
     brand_voice_description: Optional[str] = None
     brand_voice_id: Optional[UUID] = None
+    hashtags_enabled: Optional[bool] = True
+    emojis_enabled: Optional[bool] = True
+    cta_text: Optional[str] = None
 
 class RepurposeResponse(BaseModel):
     outputs: Dict[str, List[str]]
