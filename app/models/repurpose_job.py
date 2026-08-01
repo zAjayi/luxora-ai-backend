@@ -13,6 +13,7 @@ class RepurposeJob(Base):
     source_text = Column(Text, nullable=True)
     source_url = Column(Text, nullable=True)
     source_type = Column(String(50), nullable=True)
+    title = Column(String(255), nullable=True)
     
     tone = Column(String(50), nullable=True)
     platforms = Column(ARRAY(String), nullable=True)

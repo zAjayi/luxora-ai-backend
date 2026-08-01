@@ -9,7 +9,7 @@ class RepurposeRequest(BaseModel):
     source: str = Field(alias="source_text")
     source_url: Optional[str] = None
     instruction: Optional[str] = None
-    platforms: List[str] = Field(default_factory=lambda: ["linkedin"])
+    platforms: Optional[List[str]] = None
     tone: Optional[str] = "Professional"
     brand_voice_description: Optional[str] = None
     brand_voice_id: Optional[UUID] = None
@@ -37,6 +37,7 @@ class RepurposeJobResponse(BaseModel):
     source_text: Optional[str]
     source_url: Optional[str]
     source_type: Optional[str]
+    title: Optional[str]
     tone: Optional[str]
     platforms: Optional[List[str]]
     cta: Optional[str]

@@ -12,7 +12,7 @@ client = AsyncOpenAI(
 from typing import AsyncGenerator
 import json
 
-async def generate_repurposed_content(source: str, platforms: list[str], tone: str, brand_voice_description: str | None = None, instruction: str | None = None) -> dict:
+async def generate_repurposed_content(source: str, platforms: list[str] | None, tone: str, brand_voice_description: str | None = None, instruction: str | None = None) -> dict:
     system_prompt = build_system_prompt()
     user_prompt = build_user_prompt(source, platforms, tone, brand_voice_description, instruction)
 
@@ -35,7 +35,7 @@ async def generate_repurposed_content(source: str, platforms: list[str], tone: s
     except Exception as e:
         raise Exception(f"AI Generation Failed: {str(e)}")
 
-async def stream_repurposed_content(source: str, platforms: list[str], tone: str, brand_voice_description: str | None = None, instruction: str | None = None) -> AsyncGenerator[str, None]:
+async def stream_repurposed_content(source: str, platforms: list[str] | None, tone: str, brand_voice_description: str | None = None, instruction: str | None = None) -> AsyncGenerator[str, None]:
     system_prompt = build_system_prompt()
     user_prompt = build_user_prompt(source, platforms, tone, brand_voice_description, instruction)
 

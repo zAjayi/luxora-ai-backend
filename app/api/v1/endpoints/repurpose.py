@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sse_starlette.sse import EventSourceResponse
 from app.schemas.repurpose import RepurposeRequest
 from app.ai.inference_client import stream_repurposed_content
+from app.ai.prompt_builder import get_platform_title_hint
 from app.db.session import get_db, AsyncSessionLocal
 from app.models.repurpose_job import RepurposeJob
 from app.models.repurposed_output import RepurposedOutput
@@ -17,6 +18,7 @@ class SingleOutputStreamExtractor:
     def __init__(self) -> None:
         self.buffer = ""
         self.platform_name = "linkedin"
+        self.title = ""
         self.in_variant = False
         self.tail_guard = len('</variant>') - 1
 
@@ -26,6 +28,20 @@ class SingleOutputStreamExtractor:
 
         while True:
             if not self.in_variant:
+                if not self.title:
+                    title_start = self.buffer.find('<title>')
+                    platform_start = self.buffer.find('<platform name="')
+                    if title_start != -1 and (platform_start == -1 or title_start < platform_start):
+                        title_end = self.buffer.find('</title>', title_start)
+                        if title_end == -1:
+                            return events
+
+                        title_text = self.buffer[title_start + len('<title>'):title_end].strip()
+                        if title_text:
+                            self.title = title_text
+                        self.buffer = self.buffer[title_end + len('</title>'):]
+                        continue
+
                 platform_start = self.buffer.find('<platform name="')
                 if platform_start == -1:
                     return events
@@ -96,11 +112,15 @@ async def repurpose_content_stream(request: Request, payload: RepurposeRequest, 
         brand_voice = result.scalars().first()
         if brand_voice:
             brand_voice_desc = brand_voice.style_guide_text
+
+    primary_platform, request_title = get_platform_title_hint(payload.platforms, payload.instruction, payload.source)
+
     # Create the job initially
     job = RepurposeJob(
         source_text=payload.source,
         source_url=payload.source_url,
-        platforms=payload.platforms,
+        title=request_title,
+        platforms=[primary_platform],
         tone=payload.tone,
         source_type="text",
         status="processing"
@@ -117,13 +137,17 @@ async def repurpose_content_stream(request: Request, payload: RepurposeRequest, 
             # First send the job_id
             yield {
                 "event": "job_created",
-                "data": str(job.id)
+                "data": json.dumps({
+                    "jobId": str(job.id),
+                    "title": job.title,
+                    "platform": primary_platform,
+                })
             }
             
             # Yield chunks as they arrive from the AI model
             async for chunk in stream_repurposed_content(
                 source=payload.source,
-                platforms=payload.platforms,
+                platforms=[primary_platform],
                 tone=payload.tone,
                 brand_voice_description=brand_voice_desc,
                 instruction=payload.instruction
@@ -151,6 +175,7 @@ async def repurpose_content_stream(request: Request, payload: RepurposeRequest, 
             # Persist the single streamed result
             try:
                 async with AsyncSessionLocal() as bg_db:
+                    resolved_title = extractor.title or job.title or request_title
                     output = RepurposedOutput(
                         job_id=job.id,
                         platform=extractor.platform_name,
@@ -161,6 +186,8 @@ async def repurpose_content_stream(request: Request, payload: RepurposeRequest, 
                     
                     bg_job = await bg_db.get(RepurposeJob, job.id)
                     if bg_job:
+                        bg_job.title = resolved_title
+                        bg_job.platforms = [extractor.platform_name]
                         bg_job.status = "completed"
                         await bg_db.commit()
             except Exception as ex:

@@ -6,6 +6,58 @@ PLATFORM_RULES = {
     "tiktok": "Engaging TikTok video captions. Use relevant hooks and trending hashtags, conversational tone, grab attention immediately."
 }
 
+PLATFORM_DISPLAY_NAMES = {
+    "twitter": "Twitter/X",
+    "x": "Twitter/X",
+    "linkedin": "LinkedIn",
+    "instagram": "Instagram",
+    "facebook": "Facebook",
+    "threads": "Threads",
+    "tiktok": "TikTok",
+}
+
+
+def infer_primary_platform(platforms: list[str] | None, instruction: str | None = None, source: str | None = None) -> str:
+    if platforms:
+        return platforms[0]
+
+    search_text = " ".join(part for part in [instruction, source] if part).lower()
+    platform_hints = {
+        "twitter": ["twitter", "x ", " x", "thread", "tweet"],
+        "linkedin": ["linkedin"],
+        "instagram": ["instagram", "ig"],
+        "facebook": ["facebook", "fb"],
+        "threads": ["threads"],
+        "tiktok": ["tiktok"],
+    }
+
+    for platform, hints in platform_hints.items():
+        if any(hint in search_text for hint in hints):
+            return platform
+
+    return "linkedin"
+
+
+def build_request_title(platform: str, instruction: str | None = None) -> str:
+    normalized_platform = platform.lower()
+    display_name = PLATFORM_DISPLAY_NAMES.get(normalized_platform, platform.title())
+
+    if instruction and "thread" in instruction.lower() and normalized_platform in {"twitter", "x", "threads"}:
+        return f"{display_name} thread"
+
+    if normalized_platform == "instagram":
+        return "Instagram caption"
+
+    if normalized_platform == "tiktok":
+        return "TikTok caption"
+
+    return f"{display_name} post"
+
+
+def get_platform_title_hint(platforms: list[str] | None, instruction: str | None = None, source: str | None = None) -> tuple[str, str]:
+    primary_platform = infer_primary_platform(platforms, instruction, source)
+    return primary_platform, build_request_title(primary_platform, instruction)
+
 def build_system_prompt() -> str:
     return """You are LuxoraAI, an expert social media manager.
 Your task is to repurpose the user's content for specified social media platforms.
@@ -13,21 +65,22 @@ Your task is to repurpose the user's content for specified social media platform
 CRITICAL INSTRUCTIONS:
 1. DO NOT include any preamble, explanation, or introduction text before the content output.
 2. Start your response directly with the content output.
-3. Structure your response using XML tags as follows:
+3. You may optionally begin with a <title>...</title> tag containing a short human-readable title.
+4. Structure your response using XML tags as follows:
    - Wrap the single output in one <platform name="PLATFORM_NAME"> tag
    - Include exactly 1 variant wrapped in a <variant> tag
    - Only use the first requested platform
-4. Do not include any markdown code blocks or extra formatting.
+5. Do not include any markdown code blocks or extra formatting.
 
 Example format:
+<title>LinkedIn post</title>
 <platform name="twitter">
 <variant>Single result text here</variant>
 </platform>
 """
 
-def build_user_prompt(source: str, platforms: list[str], tone: str, brand_voice_description: str | None = None, instruction: str | None = None) -> str:
-    effective_platforms = platforms or ["linkedin"]
-    primary_platform = effective_platforms[0]
+def build_user_prompt(source: str, platforms: list[str] | None, tone: str, brand_voice_description: str | None = None, instruction: str | None = None) -> str:
+    primary_platform, request_title = get_platform_title_hint(platforms, instruction, source)
     
     rule = PLATFORM_RULES.get(primary_platform.lower(), "Follow general best practices for this platform.")
 
@@ -36,6 +89,9 @@ def build_user_prompt(source: str, platforms: list[str], tone: str, brand_voice_
 
     return f"""Repurpose the following text for the single primary platform: {primary_platform}.
 Maintain the following core tone/voice: {tone}. Adapt this core voice to seamlessly fit the unique style, audience expectations, and formatting norms of this platform.{brand_voice_instruction}{instruction_context}
+
+Requested title hint:
+{request_title}
 
 Platform Specific Rules:
  - {primary_platform}: {rule}
