@@ -7,3 +7,6 @@ from app.models.repurposed_output import RepurposedOutput
 from app.models.article_field import ArticleField
 from app.models.article_job import ArticleJob
 from app.models.article_output import ArticleOutput
+from app.models.document_vector import DocumentVector
+from app.models.chat_session import ChatSession
+from app.models.chat_message import ChatMessage

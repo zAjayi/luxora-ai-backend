@@ -10,6 +10,10 @@ from app.models.repurpose_job import RepurposeJob
 from app.models.repurposed_output import RepurposedOutput
 from app.models.brand_voice import BrandVoice
 import json
+from pydantic import BaseModel
+from typing import Optional
+from app.services.retrieval_service import search_vectors, build_rag_prompt
+from app.ai.prompt_builder import build_system_prompt
 
 router = APIRouter()
 
@@ -214,3 +218,25 @@ async def repurpose_content_stream(request: Request, payload: RepurposeRequest, 
             }
 
     return EventSourceResponse(event_generator())
+
+
+class RetrieveRequest(BaseModel):
+    query: Optional[str] = None
+    k: int = 5
+
+
+@router.post("/{job_id}/retrieve")
+async def retrieve_for_job(job_id: str, payload: RetrieveRequest, db: AsyncSession = Depends(get_db)):
+    """Perform a vector search scoped to a repurpose job and return top-k snippets.
+
+    Also return an assembled RAG prompt combining system instructions and retrieved snippets.
+    """
+    if not payload.query:
+        raise HTTPException(status_code=400, detail="query is required")
+
+    results = await search_vectors(db=db, query=payload.query, job_id=job_id, k=payload.k)
+
+    system_prompt = build_system_prompt()
+    rag_prompt = build_rag_prompt(system_prompt, payload.query, results, max_snippets=payload.k)
+
+    return {"results": results, "rag_prompt": rag_prompt}
