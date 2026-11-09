@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, DateTime, Text, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 import uuid
 from app.db.base_class import Base
 
@@ -13,3 +14,5 @@ class ArticleField(Base):
     
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User", back_populates="article_fields")

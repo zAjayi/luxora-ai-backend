@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sse_starlette.sse import EventSourceResponse
+from app.api.deps import get_authenticated_user
 from app.schemas.repurpose import RepurposeRequest
 from app.ai.inference_client import stream_repurposed_content
 from app.ai.prompt_builder import get_platform_title_hint
@@ -9,6 +10,7 @@ from app.db.session import get_db, AsyncSessionLocal
 from app.models.repurpose_job import RepurposeJob
 from app.models.repurposed_output import RepurposedOutput
 from app.models.brand_voice import BrandVoice
+from app.models.user import User
 import json
 from pydantic import BaseModel
 from typing import Optional
@@ -105,21 +107,25 @@ class SingleOutputStreamExtractor:
         return events
 
 @router.post("/stream")
-async def repurpose_content_stream(request: Request, payload: RepurposeRequest, db: AsyncSession = Depends(get_db)):
+async def repurpose_content_stream(
+    request: Request,
+    payload: RepurposeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_authenticated_user),
+):
     """
     Streams the repurposed content using XML tags and accumulated chunks.
     Accumulates chunks before parsing to improve performance.
     """
     brand_voice_desc = payload.brand_voice_description
     if payload.brand_voice_id:
-        result = await db.execute(select(BrandVoice).where(BrandVoice.id == payload.brand_voice_id))
+        result = await db.execute(select(BrandVoice).where(BrandVoice.id == payload.brand_voice_id, BrandVoice.user_id == current_user.id))
         brand_voice = result.scalars().first()
         if brand_voice:
             brand_voice_desc = brand_voice.style_guide_text
 
     primary_platform, request_title = get_platform_title_hint(payload.platforms, payload.instruction, payload.source)
 
-    # Create the job initially
     job = RepurposeJob(
         source_text=payload.source,
         source_url=payload.source_url,
@@ -127,6 +133,7 @@ async def repurpose_content_stream(request: Request, payload: RepurposeRequest, 
         platforms=[primary_platform],
         tone=payload.tone,
         source_type="text",
+        user_id=current_user.id,
         status="processing"
     )
     db.add(job)
@@ -226,13 +233,22 @@ class RetrieveRequest(BaseModel):
 
 
 @router.post("/{job_id}/retrieve")
-async def retrieve_for_job(job_id: str, payload: RetrieveRequest, db: AsyncSession = Depends(get_db)):
+async def retrieve_for_job(
+    job_id: str,
+    payload: RetrieveRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_authenticated_user),
+):
     """Perform a vector search scoped to a repurpose job and return top-k snippets.
 
     Also return an assembled RAG prompt combining system instructions and retrieved snippets.
     """
     if not payload.query:
         raise HTTPException(status_code=400, detail="query is required")
+
+    job = await db.get(RepurposeJob, job_id)
+    if not job or job.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
 
     results = await search_vectors(db=db, query=payload.query, job_id=job_id, k=payload.k)
 

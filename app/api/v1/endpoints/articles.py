@@ -4,10 +4,12 @@ from sqlalchemy import select
 from sse_starlette.sse import EventSourceResponse
 from uuid import UUID
 from typing import List
+from app.api.deps import get_authenticated_user
 from app.db.session import get_db, AsyncSessionLocal
 from app.models.article_field import ArticleField
 from app.models.article_job import ArticleJob
 from app.models.article_output import ArticleOutput
+from app.models.user import User
 from app.schemas.article import (
     ArticleFieldCreate,
     ArticleFieldUpdate,
@@ -32,29 +34,38 @@ router = APIRouter()
 # ============ Article Fields CRUD ============
 
 @router.post("/fields", response_model=ArticleFieldResponse)
-async def create_article_field(field: ArticleFieldCreate, db: AsyncSession = Depends(get_db)):
-    db_field = ArticleField(**field.model_dump())
+async def create_article_field(
+    field: ArticleFieldCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_authenticated_user),
+):
+    db_field = ArticleField(**field.model_dump(), user_id=current_user.id)
     db.add(db_field)
     await db.commit()
     await db.refresh(db_field)
     return db_field
 
 @router.get("/fields", response_model=List[ArticleFieldResponse])
-async def list_article_fields(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(ArticleField))
+async def list_article_fields(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_authenticated_user)):
+    result = await db.execute(select(ArticleField).where(ArticleField.user_id == current_user.id))
     return result.scalars().all()
 
 @router.get("/fields/{id}", response_model=ArticleFieldResponse)
-async def get_article_field(id: UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(ArticleField).where(ArticleField.id == id))
+async def get_article_field(id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_authenticated_user)):
+    result = await db.execute(select(ArticleField).where(ArticleField.id == id, ArticleField.user_id == current_user.id))
     field = result.scalars().first()
     if not field:
         raise HTTPException(status_code=404, detail="Article field not found")
     return field
 
 @router.put("/fields/{id}", response_model=ArticleFieldResponse)
-async def update_article_field(id: UUID, field: ArticleFieldUpdate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(ArticleField).where(ArticleField.id == id))
+async def update_article_field(
+    id: UUID,
+    field: ArticleFieldUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_authenticated_user),
+):
+    result = await db.execute(select(ArticleField).where(ArticleField.id == id, ArticleField.user_id == current_user.id))
     db_field = result.scalars().first()
     if not db_field:
         raise HTTPException(status_code=404, detail="Article field not found")
@@ -69,8 +80,8 @@ async def update_article_field(id: UUID, field: ArticleFieldUpdate, db: AsyncSes
     return db_field
 
 @router.delete("/fields/{id}")
-async def delete_article_field(id: UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(ArticleField).where(ArticleField.id == id))
+async def delete_article_field(id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_authenticated_user)):
+    result = await db.execute(select(ArticleField).where(ArticleField.id == id, ArticleField.user_id == current_user.id))
     db_field = result.scalars().first()
     if not db_field:
         raise HTTPException(status_code=404, detail="Article field not found")
@@ -82,21 +93,25 @@ async def delete_article_field(id: UUID, db: AsyncSession = Depends(get_db)):
 # ============ Article Generation Stream ============
 
 @router.post("/stream")
-async def generate_article_stream(request: Request, payload: ArticleRequest, db: AsyncSession = Depends(get_db)):
+async def generate_article_stream(
+    request: Request,
+    payload: ArticleRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_authenticated_user),
+):
     """
     Streams the generated article content using XML tags and accumulated chunks.
     """
-    # Get the field details
-    field_result = await db.execute(select(ArticleField).where(ArticleField.id == payload.field_id))
+    field_result = await db.execute(select(ArticleField).where(ArticleField.id == payload.field_id, ArticleField.user_id == current_user.id))
     field = field_result.scalars().first()
     if not field:
         raise HTTPException(status_code=404, detail="Article field not found")
-    
-    # Create the job
+
     job = ArticleJob(
         source_text=payload.source_text,
         field_id=payload.field_id,
         tone=payload.tone,
+        user_id=current_user.id,
         status="processing"
     )
     db.add(job)
@@ -219,8 +234,8 @@ async def generate_article_stream(request: Request, payload: ArticleRequest, db:
     return EventSourceResponse(event_generator())
 
 @router.get("/{job_id}", response_model=ArticleJobResponse)
-async def get_article_job(job_id: UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(ArticleJob).where(ArticleJob.id == job_id))
+async def get_article_job(job_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_authenticated_user)):
+    result = await db.execute(select(ArticleJob).where(ArticleJob.id == job_id, ArticleJob.user_id == current_user.id))
     job = result.scalars().first()
     if not job:
         raise HTTPException(status_code=404, detail="Article job not found")

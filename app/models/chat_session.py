@@ -17,4 +17,5 @@ class ChatSession(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+    user = relationship("User", back_populates="chat_sessions")
 

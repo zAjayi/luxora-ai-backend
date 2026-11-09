@@ -20,3 +20,4 @@ class ArticleJob(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     outputs = relationship("ArticleOutput", back_populates="job", cascade="all, delete-orphan")
+    user = relationship("User", back_populates="article_jobs")
